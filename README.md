@@ -1,5 +1,16 @@
 # The Fly's Hash Function
 
+Two studies on the measured *Drosophila* mushroom body connectome, each with a
+live browser demo.
+
+**Demos** &nbsp;
+[The Fly's Hash Function](https://realgauravvyas.github.io/flys-hash-function/) ·
+[Can a Fly Solve Sudoku?](https://realgauravvyas.github.io/flys-hash-function/sudoku.html)
+
+---
+
+## Study 1 — the fly as a hash function
+
 Is the fruit fly's *measured* olfactory wiring a better locality-sensitive hash
 than the random matrix the literature has been substituting for it since 2017?
 
@@ -83,3 +94,59 @@ connection threshold.
 - **Does the fly's degree sequence beat random on data matched to natural
   odour statistics specifically?** That is the experiment that would turn this
   from a negative result into a positive one.
+
+
+---
+
+## Study 2 — can a fly solve sudoku?
+
+Short answer: no, and the reason is locatable.
+
+A mushroom body is a classifier, not a solver, so it was given the part of
+sudoku that genuinely is classification. The circuit sees 27 raw facts about
+one square — for each digit, whether it already appears in that square's row,
+column and box — and answers with a digit or with "don't know". Nothing is
+pre-computed: candidate lists are exactly what it has to learn to derive. The
+fly supplies the inference; flying square to square supplies the iteration.
+
+Everything upstream of the readout is the measured connectome, with the 27
+facts placed onto glomeruli this wiring actually samples onto shared Kenyon
+cells — the co-occurrence structure Study 1 found the circuit specialised for.
+
+### Where the deduction is lost
+
+| Readout | Accuracy on single-candidate squares |
+|---|---|
+| Small network on the raw 27 facts | 1.0000 |
+| Kenyon cells → output neurons (**the fly**) | 0.9259 |
+| Kenyon cells → one extra layer → output | 0.9977 |
+
+The task is trivially learnable, and the sparse Kenyon cell code retains
+99.77% of what is needed. The failure is the last step: a mushroom body has
+exactly **one** learned layer, and one linear layer cannot pull the answer
+back out of the code.
+
+### What that costs on whole puzzles
+
+| Readout | Puzzles solved | Squares filled | Corrupted |
+|---|---|---|---|
+| The fly | 2 / 40 | 17.3% | 0 |
+| + one extra layer | 40 / 40 | 100.0% | 0 |
+
+Both readouts answer only above a confidence threshold calibrated to 99.9%
+precision, which is why neither ever corrupts a board — the circuit stops
+rather than guesses.
+
+```
+python src/sudoku_fly.py     # encoding, naked-single labelling, the fly's own
+                             # depression learning rule
+python src/diagnose.py       # locates the loss: task / graded KC / binarised KC
+python src/sudoku_train.py   # trains both readouts, exports the demo
+```
+
+A note on the depression rule: the mushroom body learns by dopamine-gated
+*depression* of Kenyon-cell-to-output synapses, and `sudoku_fly.py` implements
+it. Over ten output neurons it performs near chance (~0.11). That is a real
+limitation of depression-only learning at this fan-out, not a bug — the real
+circuit works with a small number of opposing output channels, not ten
+competing ones.
