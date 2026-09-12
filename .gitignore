@@ -1,0 +1,6 @@
+# regenerable from the public hemibrain release
+data/*.csv
+data/*.gz
+data/*.tar.gz
+__pycache__/
+*.pyc

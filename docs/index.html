@@ -1,0 +1,1014 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="The real fruit-fly mushroom body connectome running live as a locality-sensitive hash, benchmarked against the random matrix the literature has used in its place since 2017.">
+<meta property="og:title" content="The Fly's Hash Function">
+<meta property="og:description" content="The measured Drosophila connectome, running live in your browser as a hash function.">
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<title>The Fly's Hash Function</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+/* Committed dark instrument. Kenyon cells are observed by fluorescence
+   imaging - sparse bright cells on dark tissue - so the page is painted as
+   that viewport. Real fly in GCaMP green, random fly in magenta: the actual
+   two-channel fluorescence convention. Single visual world by intent; every
+   colour is painted explicitly so it holds on any host ground. */
+:root {
+  --ground: #0A0C0F;
+  --panel: #12161B;
+  --panel-2: #171C23;
+  --line: #232B35;
+  --line-hi: #33404E;
+  --ink: #DDE4EB;
+  --ink-dim: #9AA7B4;
+  --muted: #6B7887;
+  --real: #3DE8A0;
+  --real-deep: #0E4F38;
+  --rand: #FF4FD8;
+  --rand-deep: #5A1049;
+  --amber: #FFB454;
+  --step: clamp(14px, 2.2vw, 22px);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-inline: 20px;
+  padding-block: 0 64px;
+}
+
+/* ---------------------------------------------------------------- header */
+
+header { padding-block: 48px 30px; }
+
+.eyebrow {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--real);
+  box-shadow: 0 0 8px var(--real);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+h1 {
+  font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
+  font-weight: 700;
+  font-size: clamp(34px, 6.4vw, 62px);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  margin: 0 0 18px;
+  text-wrap: balance;
+}
+
+.lede {
+  max-width: 64ch;
+  font-size: clamp(15px, 1.7vw, 17.5px);
+  color: var(--ink-dim);
+  margin: 0;
+}
+.lede strong { color: var(--ink); font-weight: 600; }
+
+/* --------------------------------------------------------------- console */
+
+.console {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  margin-top: 34px;
+  overflow: hidden;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pn-wrap { padding: 16px 14px 6px; }
+.pn-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 8px;
+}
+.pn-label {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.pn-note { font-size: 12px; color: var(--muted); }
+#pnCanvas { display: block; width: 100%; height: 82px; }
+
+.views {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--line);
+  border-top: 1px solid var(--line);
+}
+
+.view { background: var(--panel); padding: 14px; min-width: 0; }
+
+.view-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; margin-bottom: 4px;
+}
+.view-name {
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  font-weight: 700; font-size: 17px; letter-spacing: -0.01em;
+}
+.view[data-ch="real"] .view-name { color: var(--real); }
+.view[data-ch="rand"] .view-name { color: var(--rand); }
+.view-sub { font-size: 11.5px; color: var(--muted); text-align: right; }
+
+.field-wrap { position: relative; margin: 10px 0 12px; }
+.field { display: block; width: 100%; height: auto; border-radius: 3px; }
+
+.metrics { display: grid; grid-template-columns: auto 1fr; gap: 7px 12px; align-items: center; }
+.m-label {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+  white-space: nowrap;
+}
+.m-val {
+  font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums;
+  font-size: 13px; font-weight: 500; color: var(--ink);
+}
+.meter { height: 5px; border-radius: 3px; background: #1D242D; overflow: hidden; }
+.meter > i { display: block; height: 100%; width: 0%; transition: width .12s linear; }
+.view[data-ch="real"] .meter > i { background: var(--real); }
+.view[data-ch="rand"] .meter > i { background: var(--rand); }
+
+.spark { display: block; width: 100%; height: 34px; margin-top: 10px; }
+
+/* -------------------------------------------------------------- controls */
+
+.controls { padding: 14px; border-top: 1px solid var(--line); background: var(--panel-2); }
+
+.ctl-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ctl-row + .ctl-row { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
+
+.ctl-label {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  margin-right: 4px; flex: 0 0 auto;
+}
+
+button {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  background: #151A21;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 7px 11px;
+  cursor: pointer;
+  transition: background .14s, border-color .14s, color .14s;
+}
+button:hover { background: #1B222B; color: var(--ink); border-color: var(--line-hi); }
+button[aria-pressed="true"] {
+  background: #10312A; color: var(--real); border-color: #1E6B4F;
+}
+button.world[aria-pressed="true"] {
+  background: #2B1030; color: var(--amber); border-color: #6B4A1E;
+}
+button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+button .gl { color: var(--muted); }
+button[aria-pressed="true"] .gl { color: inherit; opacity: .7; }
+
+.verdict {
+  margin-top: 12px; padding: 11px 13px;
+  border: 1px solid var(--line); border-left: 3px solid var(--amber);
+  border-radius: 3px; background: #14181E;
+  font-size: 13.5px; color: var(--ink-dim);
+  min-height: 42px;
+}
+.verdict b { color: var(--ink); font-weight: 600; }
+.verdict .win-real { color: var(--real); font-weight: 600; }
+.verdict .win-rand { color: var(--rand); font-weight: 600; }
+
+/* -------------------------------------------------------------- findings */
+
+section.findings { margin-top: 60px; }
+
+h2 {
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  font-weight: 700; font-size: clamp(23px, 3.2vw, 31px);
+  letter-spacing: -0.015em; margin: 0 0 10px; text-wrap: balance;
+}
+h3 {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--muted); font-weight: 500; margin: 38px 0 12px;
+}
+p { max-width: 68ch; color: var(--ink-dim); }
+p strong { color: var(--ink); font-weight: 600; }
+
+.tbl-scroll { overflow-x: auto; margin-top: 4px; }
+table { border-collapse: collapse; width: 100%; min-width: 470px; font-size: 13.5px; }
+caption {
+  caption-side: bottom; text-align: left; padding-top: 9px;
+  font-size: 12px; color: var(--muted); line-height: 1.5;
+}
+th, td { padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+thead th {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+  font-weight: 500; border-bottom-color: var(--line-hi);
+}
+tbody td { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+tbody th {
+  font-family: "IBM Plex Sans", sans-serif; font-weight: 500;
+  font-size: 13.5px; color: var(--ink-dim); text-align: left;
+}
+tr.is-real th, tr.is-real td { color: var(--real); }
+tr.is-real th { font-weight: 600; }
+tr.is-best td.best { color: var(--amber); }
+td.best::after { content: " \25C0"; font-size: 9px; vertical-align: 1px; }
+.sem { color: var(--muted); font-size: 11px; }
+
+.pull {
+  margin: 30px 0; padding: 18px 20px;
+  border: 1px solid var(--line); border-radius: 4px; background: var(--panel);
+  font-size: clamp(15.5px, 2vw, 18px); line-height: 1.5; color: var(--ink);
+  max-width: 68ch;
+}
+.pull span { color: var(--amber); }
+
+footer {
+  margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line);
+  font-size: 12.5px; color: var(--muted); max-width: 72ch;
+}
+footer a { color: var(--ink-dim); }
+
+@media (max-width: 760px) {
+  .views { grid-template-columns: 1fr; }
+  .ctl-label { flex: 1 0 100%; margin-bottom: 2px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dot { animation: none; }
+  .meter > i { transition: none; }
+}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">
+    <span class="dot" aria-hidden="true"></span>
+    <span>Hemibrain v1.2</span>
+    <span>130 projection neurons</span>
+    <span>1,745 Kenyon cells</span>
+    <span>9,657 synaptic connections</span>
+    <span id="fps">--</span>
+  </div>
+  <h1>The Fly's Hash Function</h1>
+  <p class="lede">
+    In 2017 the fruit fly's olfactory circuit was found to compute a
+    <strong>locality-sensitive hash</strong>. The wiring looked random, so every
+    paper since has modelled it with a random matrix. We now have the real
+    wiring. Below, the measured connectome runs live against that assumption &mdash;
+    same input, same inhibition, only the synapses differ.
+  </p>
+</header>
+
+<div class="console">
+  <div class="bar">
+    <span>Antennal lobe &rarr; mushroom body calyx</span>
+    <span id="srcLabel">Signal: drifting blend</span>
+  </div>
+
+  <div class="pn-wrap">
+    <div class="pn-head">
+      <span class="pn-label">Projection neuron input &mdash; 130 channels, 52 glomeruli</span>
+      <span class="pn-note" id="pnTop">&nbsp;</span>
+    </div>
+    <canvas id="pnCanvas"></canvas>
+  </div>
+
+  <div class="views">
+    <div class="view" data-ch="real">
+      <div class="view-head">
+        <span class="view-name">Real connectome</span>
+        <span class="view-sub">measured synapse counts</span>
+      </div>
+      <div class="field-wrap"><canvas class="field" id="fieldReal"></canvas></div>
+      <div class="metrics">
+        <span class="m-label">Active</span><span class="m-val" id="actReal">&mdash;</span>
+        <span class="m-label">Similarity kept</span>
+        <span><span class="m-val" id="lshReal">&mdash;</span><span class="meter" style="margin-top:4px"><i id="barReal"></i></span></span>
+      </div>
+      <canvas class="spark" id="sparkReal"></canvas>
+    </div>
+
+    <div class="view" data-ch="rand">
+      <div class="view-head">
+        <span class="view-name">Random wiring</span>
+        <span class="view-sub">the 2017 assumption</span>
+      </div>
+      <div class="field-wrap"><canvas class="field" id="fieldRand"></canvas></div>
+      <div class="metrics">
+        <span class="m-label">Active</span><span class="m-val" id="actRand">&mdash;</span>
+        <span class="m-label">Similarity kept</span>
+        <span><span class="m-val" id="lshRand">&mdash;</span><span class="meter" style="margin-top:4px"><i id="barRand"></i></span></span>
+      </div>
+      <canvas class="spark" id="sparkRand"></canvas>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="ctl-row">
+      <span class="ctl-label">Odour</span>
+      <button data-odour="blend" aria-pressed="true">Drifting blend</button>
+      <button data-odour="DA2">Geosmin <span class="gl">DA2</span></button>
+      <button data-odour="V">CO<sub>2</sub> <span class="gl">V</span></button>
+      <button data-odour="DA1">cVA <span class="gl">DA1</span></button>
+      <button data-odour="DM1">Apple cider <span class="gl">DM1</span></button>
+      <button id="micBtn" aria-pressed="false">&#127908; Microphone</button>
+      <button id="sndBtn" aria-pressed="false">&#9834; Sonify</button>
+    </div>
+    <div class="ctl-row">
+      <span class="ctl-label">Input world</span>
+      <button class="world" data-world="fly" aria-pressed="false">Fly's own world</button>
+      <button class="world" data-world="uniform" aria-pressed="false">Uniform world</button>
+      <span class="pn-note">Statistics matched to each wiring's own structure</span>
+    </div>
+    <div class="verdict" id="verdict">
+      Both circuits are hashing the same signal. <b>Similarity kept</b> is the
+      fraction of the sparse code that survives a small perturbation of the
+      input &mdash; the property a locality-sensitive hash exists to provide.
+    </div>
+  </div>
+</div>
+
+<section class="findings">
+  <h2>What the measured wiring actually does</h2>
+  <p>
+    Each Kenyon cell samples about six projection neurons through dendritic
+    claws, and feedback inhibition leaves only the strongest 5&nbsp;% firing.
+    Those survivors are the hash code. Swapping the real matrix for matched
+    null models isolates what each structural feature costs.
+  </p>
+
+  <h3>Retrieval quality &mdash; precision@16, five seeds</h3>
+  <div class="tbl-scroll"><table id="benchTable">
+    <caption>
+      Fraction of each point's true 16 nearest neighbours recovered from the
+      sparse code alone. Every condition shares one fixed encoder into
+      projection-neuron space, so only the 130&times;1745 matrix varies.
+    </caption>
+  </table></div>
+
+  <div class="pull">
+    The real connectome is <span id="gapNum">~20&nbsp;%</span> worse at generic
+    similarity search than the random matrix standing in for it. Nine years of
+    fly-inspired hashing has been crediting the fly with performance its own
+    wiring does not have.
+  </div>
+
+  <h3>Where the cost comes from</h3>
+  <p>
+    The nulls separate cleanly. Uneven projection-neuron out-degree is the
+    dominant penalty; the structured co-occurrence reported in 2022 costs
+    almost nothing; synaptic weighting costs nearly as much as degree. Strip
+    all three and you recover the idealised circuit exactly.
+  </p>
+
+  <h3>But it is specialised, not simply worse</h3>
+  <p>
+    Feeding the circuit input drawn from the world its own wiring implies
+    reverses the result completely. This is the switch wired into the console
+    above &mdash; flip between the two worlds and watch the winner change.
+  </p>
+  <div class="tbl-scroll"><table id="specTable">
+    <caption>
+      Rows are the input distribution, columns the matrix doing the hashing.
+      Each world is sampled with covariance equal to that wiring's
+      projection-neuron co-occurrence.
+    </caption>
+  </table></div>
+  <p>
+    So the mushroom body is not a poor hash function. It is a hash function
+    tuned to one distribution, paying for that tuning everywhere else &mdash;
+    and the tuning lives almost entirely in the degree sequence rather than in
+    which specific glomeruli share a cell.
+  </p>
+</section>
+
+<footer>
+  Connectivity from the <em>Drosophila</em> hemibrain v1.2 traced adjacency
+  release (Janelia FlyEM, CC&nbsp;BY): 130 uniglomerular olfactory projection
+  neurons across 52 glomeruli onto 1,745 Kenyon cells, 171,623 synapses, at a
+  3-synapse connection threshold. Kenyon cells are positioned by t-SNE over
+  their projection-neuron input vectors, so neighbouring cells share odour
+  tuning. Geosmin&rarr;DA2, CO<sub>2</sub>&rarr;V and cVA&rarr;DA1 are
+  established receptor-to-glomerulus mappings; the response amplitudes driven
+  here are synthetic. Benchmark protocol after Dasgupta, Stevens &amp;
+  Navlakha, <em>Science</em> 2017.
+</footer>
+
+</div>
+
+<script src="connectome.js"></script>
+<script>
+(function () {
+  "use strict";
+  var C = window.CONNECTOME;
+  if (!C) { return; }
+
+  var NPN = C.n_pn, NKC = C.n_kc;
+  var REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------------------------------------------------------- decoding */
+
+  function d64(s, T) {
+    var bin = atob(s), u8 = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) { u8[i] = bin.charCodeAt(i); }
+    return new T(u8.buffer);
+  }
+
+  function mkNet(o) {
+    var w = d64(o.w, Uint16Array), mx = 1, i;
+    for (i = 0; i < w.length; i++) { if (w[i] > mx) { mx = w[i]; } }
+    var wf = new Float32Array(w.length);
+    for (i = 0; i < w.length; i++) { wf[i] = w[i] / mx; }
+    var xi = d64(o.xy, Int16Array), xy = new Float32Array(xi.length);
+    for (i = 0; i < xi.length; i++) { xy[i] = xi[i] / 32767; }
+    return { pn: d64(o.pn, Uint8Array), kc: d64(o.kc, Uint16Array), w: wf, xy: xy };
+  }
+
+  var NET = { real: mkNet(C.real), rand: mkNet(C.random) };
+  var WORLD = {
+    fly: d64(C.world_real, Float32Array),
+    uniform: d64(C.world_random, Float32Array)
+  };
+  var GLOMS = C.gloms;
+  var UNIQ = C.uniq_gloms;
+  var K = Math.max(1, Math.round(0.05 * NKC));
+
+  /* -------------------------------------------------------- fly circuit */
+
+  var yBuf = { real: new Float32Array(NKC), rand: new Float32Array(NKC) };
+  var yAlt = { real: new Float32Array(NKC), rand: new Float32Array(NKC) };
+  var code = { real: new Uint8Array(NKC), rand: new Uint8Array(NKC) };
+  var codeAlt = { real: new Uint8Array(NKC), rand: new Uint8Array(NKC) };
+  var hist = new Int32Array(256);
+
+  function project(net, x, out) {
+    out.fill(0);
+    var pn = net.pn, kc = net.kc, w = net.w, n = pn.length;
+    for (var e = 0; e < n; e++) { out[kc[e]] += x[pn[e]] * w[e]; }
+  }
+
+  /* Winner-take-all via a 256-bin histogram: O(n), no per-frame sorting. */
+  function wta(y, k, out) {
+    var i, lo = Infinity, hi = -Infinity, v;
+    for (i = 0; i < y.length; i++) { v = y[i]; if (v < lo) { lo = v; } if (v > hi) { hi = v; } }
+    if (hi <= lo) { out.fill(0); return 0; }
+    hist.fill(0);
+    var s = 255 / (hi - lo);
+    for (i = 0; i < y.length; i++) { hist[((y[i] - lo) * s) | 0]++; }
+    var acc = 0, b = 255;
+    for (; b > 0; b--) { acc += hist[b]; if (acc >= k) { break; } }
+    var thr = lo + b / s, n = 0;
+    for (i = 0; i < y.length; i++) {
+      if (y[i] >= thr) { out[i] = 1; n++; } else { out[i] = 0; }
+    }
+    return n;
+  }
+
+  function overlap(a, b) {
+    var inter = 0, na = 0, nb = 0;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i]) { na++; if (b[i]) { inter++; } }
+      if (b[i]) { nb++; }
+    }
+    var d = Math.min(na, nb);
+    return d ? inter / d : 0;
+  }
+
+  /* ------------------------------------------------------- input signal */
+
+  var x = new Float32Array(NPN);
+  var xPerturb = new Float32Array(NPN);
+  var zBuf = new Float32Array(NPN);
+  var mode = "odour", odour = "blend", world = null;
+  var micAnalyser = null, micData = null;
+
+  function gaussPair() {
+    var u = 1 - Math.random(), v = Math.random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  /* Lower-triangular multiply: x = L z, giving input with that wiring's
+     own co-occurrence covariance. */
+  function sampleWorld(L, out) {
+    var i, j;
+    for (i = 0; i < NPN; i++) { zBuf[i] = gaussPair(); }
+    for (i = 0; i < NPN; i++) {
+      var acc = 0, row = i * NPN;
+      for (j = 0; j <= i; j++) { acc += L[row + j] * zBuf[j]; }
+      out[i] = acc;
+    }
+  }
+
+  var phase = 0;
+  function buildInput(t) {
+    var i;
+    if (world) {
+      sampleWorld(WORLD[world], x);
+    } else if (mode === "mic" && micAnalyser) {
+      micAnalyser.getByteFrequencyData(micData);
+      var nb = micData.length;
+      for (i = 0; i < NPN; i++) {
+        var f0 = Math.pow(nb, i / NPN), f1 = Math.pow(nb, (i + 1) / NPN);
+        var a = Math.min(nb - 1, Math.floor(f0)), b = Math.min(nb, Math.ceil(f1));
+        var sum = 0, c = 0;
+        for (var q = a; q < b; q++) { sum += micData[q]; c++; }
+        x[i] = c ? (sum / c) / 255 : 0;
+      }
+    } else {
+      phase += REDUCED ? 0.004 : 0.013;
+      for (i = 0; i < NPN; i++) {
+        var base = 0.06 + 0.05 * Math.sin(phase * 0.7 + i * 0.9);
+        if (odour === "blend") {
+          x[i] = base + 0.55 * Math.max(0, Math.sin(phase * 0.45 + i * 0.31)) *
+                 Math.max(0, Math.sin(phase * 0.13 + i * 0.07));
+        } else {
+          x[i] = base + (GLOMS[i] === odour ? 0.85 + 0.15 * Math.sin(phase * 1.6) : 0);
+        }
+      }
+    }
+    /* antennal lobe divisive normalisation */
+    var m = 0;
+    for (i = 0; i < NPN; i++) { m += x[i]; }
+    m /= NPN;
+    var mag = 0;
+    for (i = 0; i < NPN; i++) { x[i] -= m; mag += x[i] * x[i]; }
+    mag = Math.sqrt(mag / NPN) || 1;
+    for (i = 0; i < NPN; i++) { x[i] /= mag; }
+  }
+
+  /* ------------------------------------------------------------ drawing */
+
+  var DPR = Math.min(2, window.devicePixelRatio || 1);
+  var glow = {};
+  function makeGlow(rgb) {
+    var s = 22, c = document.createElement("canvas");
+    c.width = c.height = s;
+    var g = c.getContext("2d");
+    var rg = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    rg.addColorStop(0, "rgba(" + rgb + ",0.95)");
+    rg.addColorStop(0.35, "rgba(" + rgb + ",0.42)");
+    rg.addColorStop(1, "rgba(" + rgb + ",0)");
+    g.fillStyle = rg;
+    g.fillRect(0, 0, s, s);
+    return c;
+  }
+
+  var RGB = { real: "61,232,160", rand: "255,79,216" };
+  glow.real = makeGlow(RGB.real);
+  glow.rand = makeGlow(RGB.rand);
+
+  var fields = {
+    real: { cv: document.getElementById("fieldReal") },
+    rand: { cv: document.getElementById("fieldRand") }
+  };
+
+  function layoutField(ch) {
+    var f = fields[ch], cv = f.cv;
+    var w = cv.parentNode.clientWidth || 300;
+    var h = Math.max(190, Math.min(320, Math.round(w * 0.82)));
+    cv.width = Math.round(w * DPR); cv.height = Math.round(h * DPR);
+    cv.style.height = h + "px";
+    f.ctx = cv.getContext("2d");
+    f.w = w; f.h = h;
+
+    /* The resting field never moves, so render it once and blit it. */
+    var base = document.createElement("canvas");
+    base.width = cv.width; base.height = cv.height;
+    var b = base.getContext("2d");
+    b.scale(DPR, DPR);
+    b.fillStyle = "#080A0D";
+    b.fillRect(0, 0, w, h);
+    var xy = NET[ch].xy, pad = 14;
+    b.fillStyle = "rgba(" + RGB[ch] + ",0.15)";
+    f.px = new Float32Array(NKC * 2);
+    for (var i = 0; i < NKC; i++) {
+      var px = pad + (xy[i * 2] * 0.5 + 0.5) * (w - 2 * pad);
+      var py = pad + (xy[i * 2 + 1] * 0.5 + 0.5) * (h - 2 * pad);
+      f.px[i * 2] = px; f.px[i * 2 + 1] = py;
+      b.fillRect(px - 0.75, py - 0.75, 1.5, 1.5);
+    }
+    f.base = base;
+  }
+
+  function drawField(ch) {
+    var f = fields[ch], g = f.ctx;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.drawImage(f.base, 0, 0);
+    g.scale(DPR, DPR);
+    g.globalCompositeOperation = "lighter";
+    var c = code[ch], px = f.px, sp = glow[ch];
+    for (var i = 0; i < NKC; i++) {
+      if (c[i]) { g.drawImage(sp, px[i * 2] - 7, px[i * 2 + 1] - 7, 14, 14); }
+    }
+    g.globalCompositeOperation = "source-over";
+  }
+
+  /* projection neuron strip */
+  var pnCv = document.getElementById("pnCanvas"), pnCtx = pnCv.getContext("2d");
+  var HUE = {};
+  /* Cool 170-285 band: keeps the 52 glomeruli distinguishable without
+     competing with the green/magenta channel identities. */
+  UNIQ.forEach(function (g, i) { HUE[g] = 170 + Math.round(115 * i / UNIQ.length); });
+
+  function layoutPN() {
+    var w = pnCv.clientWidth || 600, h = 82;
+    pnCv.width = Math.round(w * DPR); pnCv.height = Math.round(h * DPR);
+    pnCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    pnCv.dw = w; pnCv.dh = h;
+  }
+
+  function drawPN() {
+    var w = pnCv.dw, h = pnCv.dh;
+    pnCtx.fillStyle = "#080A0D";
+    pnCtx.fillRect(0, 0, w, h);
+    var bw = w / NPN, best = -1, bi = 0;
+    for (var i = 0; i < NPN; i++) {
+      var v = Math.max(0, Math.min(1, x[i] / 3 + 0.5));
+      if (x[i] > best) { best = x[i]; bi = i; }
+      var bh = Math.max(1, v * (h - 6));
+      pnCtx.fillStyle = "hsl(" + HUE[GLOMS[i]] + ",44%," + (18 + v * 44) + "%)";
+      pnCtx.fillRect(i * bw, h - bh - 3, Math.max(1, bw - 1), bh);
+    }
+    return GLOMS[bi];
+  }
+
+  /* sparklines */
+  var sparks = {
+    real: { cv: document.getElementById("sparkReal"), hist: [] },
+    rand: { cv: document.getElementById("sparkRand"), hist: [] }
+  };
+  function layoutSpark(ch) {
+    var s = sparks[ch], w = s.cv.clientWidth || 280, h = 34;
+    s.cv.width = Math.round(w * DPR); s.cv.height = Math.round(h * DPR);
+    s.ctx = s.cv.getContext("2d");
+    s.ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    s.w = w; s.h = h;
+  }
+  function drawSpark(ch) {
+    var s = sparks[ch], g = s.ctx, w = s.w, h = s.h, n = s.hist.length;
+    g.fillStyle = "#0D1116"; g.fillRect(0, 0, w, h);
+    g.strokeStyle = "#1D242D"; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(0, h / 2); g.lineTo(w, h / 2); g.stroke();
+    if (n < 2) { return; }
+    var step = w / (s.cap - 1);
+    g.beginPath();
+    for (var i = 0; i < n; i++) {
+      var px = i * step, py = h - 2 - s.hist[i] * (h - 4);
+      if (i === 0) { g.moveTo(px, py); } else { g.lineTo(px, py); }
+    }
+    g.strokeStyle = "rgba(" + RGB[ch] + ",0.9)"; g.lineWidth = 1.5; g.stroke();
+    g.lineTo((n - 1) * step, h); g.lineTo(0, h); g.closePath();
+    g.fillStyle = "rgba(" + RGB[ch] + ",0.12)"; g.fill();
+    g.fillStyle = "rgba(" + RGB[ch] + ",1)";
+    g.beginPath();
+    g.arc((n - 1) * step, h - 2 - s.hist[n - 1] * (h - 4), 2.2, 0, 6.284);
+    g.fill();
+  }
+
+  /* ------------------------------------------------------------- audio */
+
+  var actx = null, voices = null, soundOn = false;
+  var NV = 9, SCALE = [0, 2, 4, 7, 9];
+
+  function initAudio() {
+    if (actx) { return; }
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    voices = { real: [], rand: [] };
+    ["real", "rand"].forEach(function (ch, ci) {
+      var pan = actx.createStereoPanner();
+      pan.pan.value = ci === 0 ? -0.65 : 0.65;
+      var out = actx.createGain();
+      out.gain.value = 0.14;
+      pan.connect(out); out.connect(actx.destination);
+      for (var v = 0; v < NV; v++) {
+        var o = actx.createOscillator();
+        o.type = ci === 0 ? "sine" : "triangle";
+        var st = SCALE[v % SCALE.length] + 12 * Math.floor(v / SCALE.length);
+        o.frequency.value = 196 * Math.pow(2, st / 12);
+        var g = actx.createGain();
+        g.gain.value = 0;
+        o.connect(g); g.connect(pan); o.start();
+        voices[ch].push(g);
+      }
+    });
+  }
+
+  function driveAudio(ch) {
+    if (!soundOn || !actx) { return; }
+    var c = code[ch], per = NKC / NV, t = actx.currentTime;
+    for (var v = 0; v < NV; v++) {
+      var lo = Math.floor(v * per), hi = Math.floor((v + 1) * per), n = 0;
+      for (var i = lo; i < hi; i++) { if (c[i]) { n++; } }
+      var target = Math.min(1, n / (K / NV) * 0.55);
+      voices[ch][v].gain.setTargetAtTime(target, t, 0.07);
+    }
+  }
+
+  /* ------------------------------------------------------------ metrics */
+
+  var el = {
+    actReal: document.getElementById("actReal"), actRand: document.getElementById("actRand"),
+    lshReal: document.getElementById("lshReal"), lshRand: document.getElementById("lshRand"),
+    barReal: document.getElementById("barReal"), barRand: document.getElementById("barRand"),
+    verdict: document.getElementById("verdict"), src: document.getElementById("srcLabel"),
+    pnTop: document.getElementById("pnTop"), fps: document.getElementById("fps")
+  };
+
+  var smooth = { real: 0, rand: 0 }, frames = 0, lastT = performance.now(), fpsAcc = 0;
+
+  function step(now) {
+    requestAnimationFrame(step);
+    var dt = now - lastT; lastT = now;
+    fpsAcc = fpsAcc * 0.92 + (1000 / Math.max(1, dt)) * 0.08;
+
+    buildInput(now);
+    /* perturbed copy: the locality-sensitivity probe */
+    for (var i = 0; i < NPN; i++) { xPerturb[i] = x[i] + 0.28 * gaussPair(); }
+
+    var topGlom = drawPN();
+
+    ["real", "rand"].forEach(function (ch) {
+      var net = NET[ch];
+      project(net, x, yBuf[ch]);
+      var n = wta(yBuf[ch], K, code[ch]);
+      project(net, xPerturb, yAlt[ch]);
+      wta(yAlt[ch], K, codeAlt[ch]);
+      var ov = overlap(code[ch], codeAlt[ch]);
+      smooth[ch] = smooth[ch] * 0.86 + ov * 0.14;
+      drawField(ch);
+      driveAudio(ch);
+
+      var s = sparks[ch];
+      s.cap = 90;
+      s.hist.push(smooth[ch]);
+      if (s.hist.length > s.cap) { s.hist.shift(); }
+      drawSpark(ch);
+
+      var cap = ch === "real" ? "Real" : "Rand";
+      el["act" + cap].textContent = n + " / " + NKC;
+      el["lsh" + cap].textContent = (smooth[ch] * 100).toFixed(1) + " %";
+      el["bar" + cap].style.width = (smooth[ch] * 100).toFixed(1) + "%";
+    });
+
+    frames++;
+    if (frames % 12 === 0) {
+      el.fps.textContent = Math.round(fpsAcc) + " fps";
+      el.pnTop.textContent = "strongest channel: " + topGlom;
+      updateVerdict();
+    }
+  }
+
+  function updateVerdict() {
+    var r = smooth.real, q = smooth.rand;
+    var gap = q > 0.001 ? (r - q) / q * 100 : 0;
+    var lead = gap >= 0
+      ? '<span class="win-real">the real connectome</span>'
+      : '<span class="win-rand">random wiring</span>';
+    var mag = Math.abs(gap).toFixed(0);
+    var ctx;
+    if (world === "fly") {
+      ctx = "Input drawn from the world the <b>real</b> wiring implies.";
+    } else if (world === "uniform") {
+      ctx = "Input drawn from the world <b>random</b> wiring implies.";
+    } else if (mode === "mic") {
+      ctx = "Live microphone, mapped to 130 odour channels &mdash; a world the fly never evolved for.";
+    } else {
+      ctx = "Synthetic odour, arbitrary channel assignment.";
+    }
+    el.verdict.innerHTML = ctx + " Leading: " + lead + " by <b>" + mag +
+      "&thinsp;%</b> similarity retention.";
+  }
+
+  /* ------------------------------------------------------------ controls */
+
+  function setPressed(sel, pred) {
+    document.querySelectorAll(sel).forEach(function (b) {
+      b.setAttribute("aria-pressed", pred(b) ? "true" : "false");
+    });
+  }
+
+  document.querySelectorAll("[data-odour]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      odour = b.dataset.odour; mode = "odour"; world = null;
+      setPressed("[data-odour]", function (o) { return o === b; });
+      setPressed("[data-world]", function () { return false; });
+      document.getElementById("micBtn").setAttribute("aria-pressed", "false");
+      el.src.textContent = "Signal: " + b.textContent.trim().toLowerCase();
+    });
+  });
+
+  document.querySelectorAll("[data-world]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      world = b.dataset.world; mode = "world";
+      setPressed("[data-world]", function (o) { return o === b; });
+      setPressed("[data-odour]", function () { return false; });
+      document.getElementById("micBtn").setAttribute("aria-pressed", "false");
+      el.src.textContent = "Signal: sampled from " +
+        (world === "fly" ? "the fly's own world" : "a uniform world");
+    });
+  });
+
+  document.getElementById("micBtn").addEventListener("click", function () {
+    var btn = this;
+    if (mode === "mic") {
+      mode = "odour"; world = null;
+      btn.setAttribute("aria-pressed", "false");
+      setPressed("[data-odour]", function (o) { return o.dataset.odour === odour; });
+      el.src.textContent = "Signal: " + odour;
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      initAudio();
+      if (actx.state === "suspended") { actx.resume(); }
+      var src = actx.createMediaStreamSource(stream);
+      micAnalyser = actx.createAnalyser();
+      micAnalyser.fftSize = 1024;
+      micAnalyser.smoothingTimeConstant = 0.55;
+      src.connect(micAnalyser);
+      micData = new Uint8Array(micAnalyser.frequencyBinCount);
+      mode = "mic"; world = null;
+      btn.setAttribute("aria-pressed", "true");
+      setPressed("[data-odour]", function () { return false; });
+      setPressed("[data-world]", function () { return false; });
+      el.src.textContent = "Signal: live microphone";
+    }).catch(function () {
+      btn.textContent = "Microphone blocked";
+      btn.disabled = true;
+    });
+  });
+
+  document.getElementById("sndBtn").addEventListener("click", function () {
+    initAudio();
+    if (actx.state === "suspended") { actx.resume(); }
+    soundOn = !soundOn;
+    this.setAttribute("aria-pressed", soundOn ? "true" : "false");
+    if (!soundOn) {
+      ["real", "rand"].forEach(function (ch) {
+        voices[ch].forEach(function (g) {
+          g.gain.setTargetAtTime(0, actx.currentTime, 0.05);
+        });
+      });
+    }
+  });
+
+  /* ------------------------------------------------------------- tables */
+
+  function num(v) { return v.toFixed(4); }
+
+  function buildBench() {
+    var b = C.benchmark;
+    var datasets = Object.keys(b);
+    var rows = ["real", "real_binary", "degree_preserving", "glomerulus_matched",
+                "weight_shuffled", "random_flyhash", "simhash"];
+    var pretty = {
+      real: "Real connectome", real_binary: "Real wiring, weights removed",
+      degree_preserving: "Degree-preserving rewire",
+      glomerulus_matched: "Sampling-bias matched",
+      weight_shuffled: "Weights shuffled",
+      random_flyhash: "Random (the 2017 model)",
+      simhash: "Classical dense LSH"
+    };
+    var dname = { mnist: "MNIST", fashion_mnist: "Fashion-MNIST", odour_correlated: "Correlated" };
+    var best = {};
+    datasets.forEach(function (d) {
+      var bv = -1;
+      rows.forEach(function (r) {
+        var v = b[d][r]["16"].mean;
+        if (v > bv) { bv = v; best[d] = r; }
+      });
+    });
+    var h = "<thead><tr><th>Matrix</th>";
+    datasets.forEach(function (d) { h += "<th>" + (dname[d] || d) + "</th>"; });
+    h += "</tr></thead><tbody>";
+    rows.forEach(function (r) {
+      var cls = r === "real" ? ' class="is-real"' : "";
+      h += "<tr" + cls + "><th scope='row'>" + pretty[r] + "</th>";
+      datasets.forEach(function (d) {
+        var s = b[d][r]["16"];
+        var bc = best[d] === r ? ' class="best"' : "";
+        h += "<td" + bc + ">" + num(s.mean) +
+             " <span class='sem'>&plusmn;" + s.sem.toFixed(3) + "</span></td>";
+      });
+      h += "</tr>";
+    });
+    var bt = document.getElementById("benchTable");
+    bt.innerHTML = bt.querySelector("caption").outerHTML + h + "</tbody>";
+
+    var g = 0, nd = 0;
+    datasets.forEach(function (d) {
+      g += (b[d].real["16"].mean - b[d].random_flyhash["16"].mean) /
+           b[d].random_flyhash["16"].mean;
+      nd++;
+    });
+    document.getElementById("gapNum").textContent =
+      Math.abs(g / nd * 100).toFixed(0) + " %";
+  }
+
+  function buildSpec() {
+    var s = C.specialization;
+    var cols = ["real", "degree_preserving", "random_flyhash"];
+    var pretty = {
+      real: "Real connectome", degree_preserving: "Degree-preserving",
+      random_flyhash: "Random wiring"
+    };
+    var wname = {
+      real: "The fly's own world", degree_preserving: "Degree-matched world",
+      random_flyhash: "Uniform random world"
+    };
+    var h = "<thead><tr><th>Input world</th>";
+    cols.forEach(function (c) { h += "<th>" + pretty[c] + "</th>"; });
+    h += "</tr></thead><tbody>";
+    cols.forEach(function (w) {
+      var bv = -1, bc = "";
+      cols.forEach(function (m) { if (s[w][m].mean > bv) { bv = s[w][m].mean; bc = m; } });
+      h += "<tr><th scope='row'>" + wname[w] + "</th>";
+      cols.forEach(function (m) {
+        h += "<td" + (bc === m ? ' class="best"' : "") + ">" + num(s[w][m].mean) + "</td>";
+      });
+      h += "</tr>";
+    });
+    var st = document.getElementById("specTable");
+    st.innerHTML = st.querySelector("caption").outerHTML + h + "</tbody>";
+  }
+
+  /* --------------------------------------------------------------- boot */
+
+  function relayout() {
+    layoutPN();
+    layoutField("real"); layoutField("rand");
+    layoutSpark("real"); layoutSpark("rand");
+  }
+
+  var rt;
+  window.addEventListener("resize", function () {
+    clearTimeout(rt); rt = setTimeout(relayout, 140);
+  });
+
+  buildBench();
+  buildSpec();
+  relayout();
+  requestAnimationFrame(step);
+})();
+</script>
+
+</body>
+</html>
