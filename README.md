@@ -7,6 +7,15 @@ live browser demo.
 [The Fly's Hash Function](https://realgauravvyas.github.io/flys-hash-function/) ·
 [Can a Fly Solve Sudoku?](https://realgauravvyas.github.io/flys-hash-function/sudoku.html)
 
+<p>
+<a href="https://realgauravvyas.github.io/flys-hash-function/">
+  <img src="docs/screenshots/hash-function.png" width="49%" alt="The Fly's Hash Function — live dashboard: projection-neuron input strip, real connectome vs random wiring firing side by side, similarity-retention meters">
+</a>
+<a href="https://realgauravvyas.github.io/flys-hash-function/sudoku.html">
+  <img src="docs/screenshots/sudoku.png" width="49%" alt="Can a Fly Solve Sudoku? — live dashboard: the fly mid-flight over the grid, Kenyon cell field firing, output neuron votes">
+</a>
+</p>
+
 ---
 
 ## Study 1 — the fly as a hash function
