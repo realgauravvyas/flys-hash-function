@@ -1,0 +1,857 @@
+<title>Can a Fly Solve Sudoku?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+/* Companion to the hash-function study, same laboratory: fluorescence-dark
+   ground, GCaMP green for the fly itself. Amber marks the layer the fly does
+   not have. Single visual world by intent; every colour painted explicitly. */
+:root {
+  --ground: #0A0C0F;
+  --panel: #12161B;
+  --panel-2: #171C23;
+  --line: #232B35;
+  --line-hi: #33404E;
+  --rule: #3A4854;
+  --ink: #DDE4EB;
+  --ink-dim: #9AA7B4;
+  --muted: #6B7887;
+  --fly: #3DE8A0;
+  --plus: #FFB454;
+  --stall: #FF5E7A;
+  --given: #7E8C9A;
+}
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1140px; margin: 0 auto; padding-inline: 20px; padding-block: 0 64px; }
+
+header { padding-block: 46px 26px; }
+.eyebrow {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 14px;
+  align-items: center; margin-bottom: 16px;
+}
+h1 {
+  font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
+  font-weight: 700; font-size: clamp(34px, 6.2vw, 60px); line-height: 1.02;
+  letter-spacing: -0.02em; margin: 0 0 16px; text-wrap: balance;
+}
+.lede { max-width: 64ch; font-size: clamp(15px, 1.7vw, 17.5px); color: var(--ink-dim); margin: 0; }
+.lede strong { color: var(--ink); font-weight: 600; }
+
+/* ---------------------------------------------------------------- stage */
+
+.stage {
+  display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 1px;
+  background: var(--line); border: 1px solid var(--line); border-radius: 4px;
+  margin-top: 32px; overflow: hidden;
+}
+.pane { background: var(--panel); padding: 16px; min-width: 0; }
+
+.board-wrap { position: relative; }
+.board {
+  display: grid; grid-template-columns: repeat(9, 1fr);
+  aspect-ratio: 1; width: 100%; max-width: 520px; margin: 0 auto;
+  background: var(--rule); gap: 1px; border: 2px solid var(--rule);
+}
+.cell {
+  background: #0D1116; display: flex; align-items: center; justify-content: center;
+  font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums;
+  font-size: clamp(15px, 3.4vw, 25px); font-weight: 500; color: var(--given);
+  position: relative;
+}
+.cell.b { box-shadow: inset 0 0 0 100px #10151B; }
+.cell.r3 { border-top: 2px solid var(--rule); }
+.cell.c3 { border-left: 2px solid var(--rule); }
+.cell.solved { color: var(--fly); }
+body.mode-plus .cell.solved { color: var(--plus); }
+.cell.fresh { animation: pop .45s ease-out; }
+@keyframes pop {
+  0% { transform: scale(.4); opacity: 0; }
+  55% { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.cell.target { box-shadow: inset 0 0 0 2px rgba(61,232,160,.55); }
+body.mode-plus .cell.target { box-shadow: inset 0 0 0 2px rgba(255,180,84,.55); }
+
+#flyLayer {
+  position: absolute; inset: 0; pointer-events: none; width: 100%; height: 100%;
+}
+
+/* -------------------------------------------------------------- mb panel */
+
+.mb-label {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  margin-bottom: 7px;
+}
+#pnStrip, #kcField { display: block; width: 100%; border-radius: 3px; }
+#pnStrip { height: 34px; }
+#kcField { height: 150px; margin-bottom: 4px; }
+
+.votes { display: grid; gap: 3px; margin-top: 4px; }
+.vote { display: grid; grid-template-columns: 16px 1fr 40px; gap: 7px; align-items: center; }
+.vote span.d {
+  font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-dim);
+  text-align: center;
+}
+.vote span.v {
+  font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--muted);
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.vbar { height: 8px; background: #1A212A; border-radius: 2px; overflow: hidden; }
+.vbar > i { display: block; height: 100%; width: 0%; background: var(--fly); }
+body.mode-plus .vbar > i { background: var(--plus); }
+.vote.win span.d { color: var(--ink); font-weight: 600; }
+
+/* ------------------------------------------------------------- controls */
+
+.controls { padding: 14px 16px; border-top: 1px solid var(--line); background: var(--panel-2); }
+.ctl-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ctl-row + .ctl-row { margin-top: 11px; padding-top: 11px; border-top: 1px dashed var(--line); }
+.ctl-label {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted); margin-right: 4px; flex: 0 0 auto;
+}
+button {
+  font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11.5px;
+  letter-spacing: 0.04em; color: var(--ink-dim); background: #151A21;
+  border: 1px solid var(--line); border-radius: 3px; padding: 7px 11px;
+  cursor: pointer; transition: background .14s, border-color .14s, color .14s;
+}
+button:hover { background: #1B222B; color: var(--ink); border-color: var(--line-hi); }
+button[aria-pressed="true"] { background: #10312A; color: var(--fly); border-color: #1E6B4F; }
+button.plus[aria-pressed="true"] { background: #31240F; color: var(--plus); border-color: #7A5A20; }
+button:focus-visible { outline: 2px solid var(--plus); outline-offset: 2px; }
+input[type="range"] { accent-color: #3DE8A0; width: 120px; }
+
+.status {
+  margin-top: 12px; padding: 11px 13px; border: 1px solid var(--line);
+  border-left: 3px solid var(--fly); border-radius: 3px; background: #14181E;
+  font-size: 13.5px; color: var(--ink-dim); min-height: 44px;
+}
+body.mode-plus .status { border-left-color: var(--plus); }
+body.is-stalled .status { border-left-color: var(--stall); }
+.status b { color: var(--ink); font-weight: 600; }
+.status .stall { color: var(--stall); font-weight: 600; }
+.status .done { color: var(--fly); font-weight: 600; }
+
+.tally { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 10px; }
+.tally div { display: flex; gap: 7px; align-items: baseline; }
+.tally .k {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--muted);
+}
+.tally .v {
+  font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums;
+  font-size: 15px; color: var(--ink);
+}
+
+/* -------------------------------------------------------------- findings */
+
+section { margin-top: 58px; }
+h2 {
+  font-family: "IBM Plex Sans Condensed", sans-serif; font-weight: 700;
+  font-size: clamp(23px, 3.2vw, 31px); letter-spacing: -0.015em;
+  margin: 0 0 10px; text-wrap: balance;
+}
+h3 {
+  font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted); font-weight: 500; margin: 36px 0 12px;
+}
+p { max-width: 68ch; color: var(--ink-dim); }
+p strong { color: var(--ink); font-weight: 600; }
+
+.tbl-scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 460px; font-size: 13.5px; }
+caption {
+  caption-side: bottom; text-align: left; padding-top: 9px; font-size: 12px;
+  color: var(--muted); line-height: 1.5;
+}
+th, td { padding: 9px 12px; text-align: right; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+thead th {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--muted); font-weight: 500;
+  border-bottom-color: var(--line-hi);
+}
+tbody td { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+tbody th {
+  font-family: "IBM Plex Sans", sans-serif; font-weight: 500; font-size: 13.5px;
+  color: var(--ink-dim); text-align: left;
+}
+tr.hl th, tr.hl td { color: var(--fly); }
+tr.hl th { font-weight: 600; }
+tr.hl-plus th, tr.hl-plus td { color: var(--plus); }
+
+.pull {
+  margin: 28px 0; padding: 18px 20px; border: 1px solid var(--line);
+  border-radius: 4px; background: var(--panel); max-width: 68ch;
+  font-size: clamp(15.5px, 2vw, 18px); line-height: 1.5; color: var(--ink);
+}
+.pull span { color: var(--plus); }
+
+footer {
+  margin-top: 54px; padding-top: 20px; border-top: 1px solid var(--line);
+  font-size: 12.5px; color: var(--muted); max-width: 72ch;
+}
+footer a { color: var(--ink-dim); }
+
+@media (max-width: 820px) {
+  .stage { grid-template-columns: 1fr; }
+  .ctl-label { flex: 1 0 100%; margin-bottom: 2px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cell.fresh { animation: none; }
+}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">
+    <span>Hemibrain v1.2</span>
+    <span>1,745 Kenyon cells</span>
+    <span>27 facts per cell</span>
+    <span id="modeTag">Readout: mushroom body</span>
+  </div>
+  <h1>Can a Fly Solve Sudoku?</h1>
+  <p class="lede">
+    A mushroom body is a classifier, not a solver &mdash; so give it the one
+    part of sudoku that <em>is</em> classification. The fly lands on a square,
+    reads 27 raw facts about it, and answers with a digit or with
+    <strong>don't know</strong>. Everything before the readout is the measured
+    connectome. Watch it go, then take away the layer it doesn't have.
+  </p>
+</header>
+
+<div class="stage">
+  <div class="pane board-wrap">
+    <div class="board" id="board"></div>
+    <canvas id="flyLayer"></canvas>
+  </div>
+
+  <div class="pane">
+    <div class="mb-label">Projection neurons &mdash; 27 facts</div>
+    <canvas id="pnStrip"></canvas>
+    <div class="mb-label" style="margin-top:12px">Kenyon cells &mdash; top 20% firing</div>
+    <canvas id="kcField"></canvas>
+    <div class="mb-label" style="margin-top:10px">Output neuron votes</div>
+    <div class="votes" id="votes"></div>
+  </div>
+</div>
+
+<div class="stage" style="margin-top:-1px;border-top:none;border-radius:0 0 4px 4px;display:block">
+  <div class="controls">
+    <div class="ctl-row">
+      <span class="ctl-label">Run</span>
+      <button id="playBtn" aria-pressed="true">&#9654; Pause</button>
+      <button id="stepBtn">Step once</button>
+      <button id="newBtn">New puzzle</button>
+      <label class="ctl-label" for="speed" style="margin-left:6px">Speed</label>
+      <input type="range" id="speed" min="1" max="10" value="6">
+    </div>
+    <div class="ctl-row">
+      <span class="ctl-label">Readout</span>
+      <button id="mbonBtn" aria-pressed="true">Mushroom body only</button>
+      <button id="plusBtn" class="plus" aria-pressed="false">+ one extra layer</button>
+      <span style="font-size:12px;color:var(--muted)">The fly has the first. No fly has the second.</span>
+    </div>
+    <div class="status" id="status">Ready.</div>
+    <div class="tally">
+      <div><span class="k">Filled</span><span class="v" id="tFilled">0</span></div>
+      <div><span class="k">Remaining</span><span class="v" id="tLeft">0</span></div>
+      <div><span class="k">Wrong</span><span class="v" id="tWrong">0</span></div>
+      <div><span class="k">Confidence</span><span class="v" id="tConf">&mdash;</span></div>
+    </div>
+  </div>
+</div>
+
+<section>
+  <h2>Why it stalls</h2>
+  <p>
+    The task itself is easy: a small network reading the same 27 facts gets it
+    perfectly right. The sparse Kenyon cell code is not the problem either
+    &mdash; the information survives the expansion almost intact. What fails is
+    the last step. A mushroom body has exactly <strong>one</strong> learned
+    layer, Kenyon cells onto output neurons, and one linear layer cannot pull
+    the answer back out of the code.
+  </p>
+
+  <h3>Same input, same Kenyon cells, different readout</h3>
+  <div class="tbl-scroll"><table id="diagTable">
+    <caption>
+      Accuracy on squares that have exactly one possible digit. Every row uses
+      the identical 27 facts; rows two and three additionally share the same
+      measured connectome and the same feedback inhibition.
+    </caption>
+  </table></div>
+
+  <div class="pull">
+    The Kenyon cell code carries <span>99.7&nbsp;%</span> of what is needed.
+    The fly cannot reach it, because reaching it takes a second learned layer
+    and the mushroom body has only one.
+  </div>
+
+  <h3>What that costs on a whole puzzle</h3>
+  <div class="tbl-scroll"><table id="puzTable">
+    <caption>
+      Forty puzzles, each solvable entirely by single-square deduction. Both
+      readouts answer only above a confidence threshold calibrated to 99.9&nbsp;%
+      precision, which is why neither ever corrupts a board &mdash; the fly
+      stops rather than guesses.
+    </caption>
+  </table></div>
+
+  <h3>What is honest here</h3>
+  <p>
+    The fly supplies the inference; flying square to square supplies the
+    iteration. That division is not a dodge &mdash; it is how an insect
+    actually operates, making local decisions as it moves rather than solving
+    its world in one shot. What the fly is never given is help: it sees only
+    which digits already occupy its row, column and box, and has to learn the
+    deduction from that. No candidate lists, no pre-computed possibilities.
+  </p>
+  <p>
+    And the honest answer to the question in the title is <strong>no</strong>.
+    Two puzzles out of forty is not solving sudoku. The interesting part is
+    that the failure is architectural and locatable: not the wiring, not the
+    sparse code, but the single learned layer at the end.
+  </p>
+</section>
+
+<footer>
+  Connectivity from the <em>Drosophila</em> hemibrain v1.2 traced adjacency
+  release (Janelia FlyEM, CC&nbsp;BY). The 27 constraint facts are placed onto
+  glomeruli that this wiring genuinely samples onto shared Kenyon cells, using
+  the co-occurrence structure measured in the companion study. Kenyon cell
+  positions come from a t-SNE over their projection-neuron inputs, so
+  neighbouring cells share tuning. Readouts trained on 54,262 squares from
+  randomly generated grids and tested on held-out ones.
+</footer>
+
+</div>
+
+<script src="connectome.js"></script>
+<script src="sudoku_model.js"></script>
+<script>
+(function () {
+  "use strict";
+  var C = window.CONNECTOME, S = window.SUDOKU;
+  if (!C || !S) { return; }
+
+  var NPN = C.n_pn, NKC = C.n_kc;
+  var REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function d64(s, T) {
+    var bin = atob(s), u8 = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) { u8[i] = bin.charCodeAt(i); }
+    return new T(u8.buffer);
+  }
+  function f16to32(h) {
+    var out = new Float32Array(h.length);
+    for (var i = 0; i < h.length; i++) {
+      var x = h[i], s = (x & 0x8000) ? -1 : 1, e = (x >> 10) & 0x1f, m = x & 0x3ff;
+      if (e === 0) { out[i] = s * Math.pow(2, -14) * (m / 1024); }
+      else if (e === 31) { out[i] = m ? NaN : s * Infinity; }
+      else { out[i] = s * Math.pow(2, e - 15) * (1 + m / 1024); }
+    }
+    return out;
+  }
+
+  /* ------------------------------------------------------- the circuit */
+
+  var W = d64(C.real.w, Uint16Array), WMAX = 1;
+  for (var i0 = 0; i0 < W.length; i0++) { if (W[i0] > WMAX) { WMAX = W[i0]; } }
+  var EPN = d64(C.real.pn, Uint8Array), EKC = d64(C.real.kc, Uint16Array);
+  var EW = new Float32Array(W.length);
+  for (var i1 = 0; i1 < W.length; i1++) { EW[i1] = W[i1] / WMAX; }
+
+  var XY = (function () {
+    var a = d64(C.real.xy, Int16Array), o = new Float32Array(a.length);
+    for (var i = 0; i < a.length; i++) { o[i] = a[i] / 32767; }
+    return o;
+  })();
+
+  var PF = d64(S.pn_feature, Int16Array);
+  var SP = S.sparsity, NC = S.n_class, UNKNOWN = 9;
+
+  var RO = {};
+  ["mbon", "plus"].forEach(function (k) {
+    var r = S.readout[k];
+    if (r.kind === "linear") {
+      RO[k] = { kind: "linear", tau: r.tau, W: f16to32(d64(r.W, Uint16Array)),
+                b: d64(r.b, Float32Array) };
+    } else {
+      RO[k] = { kind: "mlp", tau: r.tau, h: r.hidden,
+                W1: f16to32(d64(r.W1, Uint16Array)), b1: d64(r.b1, Float32Array),
+                W2: f16to32(d64(r.W2, Uint16Array)), b2: d64(r.b2, Float32Array) };
+    }
+  });
+
+  var xv = new Float32Array(NPN), yv = new Float32Array(NKC), gv = new Float32Array(NKC);
+  var hist = new Int32Array(512);
+
+  function encodeCell(bits) {
+    var i, m = 0;
+    for (i = 0; i < NPN; i++) { xv[i] = PF[i] >= 0 ? bits[PF[i]] : 0; m += xv[i]; }
+    m /= NPN;
+    var s = 0;
+    for (i = 0; i < NPN; i++) { xv[i] -= m; s += xv[i] * xv[i]; }
+    s = Math.sqrt(s / NPN) || 1e-6;
+    for (i = 0; i < NPN; i++) { xv[i] /= s; }
+  }
+
+  function kenyon() {
+    yv.fill(0);
+    for (var e = 0; e < EPN.length; e++) { yv[EKC[e]] += xv[EPN[e]] * EW[e]; }
+    var k = Math.max(1, Math.round(SP * NKC));
+    var i, lo = Infinity, hi = -Infinity, v;
+    for (i = 0; i < NKC; i++) { v = yv[i]; if (v < lo) { lo = v; } if (v > hi) { hi = v; } }
+    if (hi <= lo) { gv.fill(0); return; }
+    hist.fill(0);
+    var sc = 511 / (hi - lo);
+    for (i = 0; i < NKC; i++) { hist[((yv[i] - lo) * sc) | 0]++; }
+    var acc = 0, b = 511;
+    for (; b > 0; b--) { acc += hist[b]; if (acc >= k) { break; } }
+    var thr = lo + b / sc, mx = 0;
+    for (i = 0; i < NKC; i++) {
+      gv[i] = yv[i] > thr ? yv[i] - thr : 0;
+      if (gv[i] > mx) { mx = gv[i]; }
+    }
+    if (mx > 0) { for (i = 0; i < NKC; i++) { gv[i] /= mx; } }
+  }
+
+  var hbuf = new Float32Array(128);
+  function readout(m) {
+    var r = RO[m], out = new Float32Array(NC), i, j, a;
+    if (r.kind === "linear") {
+      for (j = 0; j < NC; j++) {
+        a = r.b[j];
+        for (i = 0; i < NKC; i++) { if (gv[i]) { a += gv[i] * r.W[i * NC + j]; } }
+        out[j] = a;
+      }
+    } else {
+      var H = r.h;
+      for (j = 0; j < H; j++) { hbuf[j] = r.b1[j]; }
+      for (i = 0; i < NKC; i++) {
+        var g = gv[i];
+        if (!g) { continue; }
+        var base = i * H;
+        for (j = 0; j < H; j++) { hbuf[j] += g * r.W1[base + j]; }
+      }
+      for (j = 0; j < H; j++) { if (hbuf[j] < 0) { hbuf[j] = 0; } }
+      for (j = 0; j < NC; j++) {
+        a = r.b2[j];
+        for (i = 0; i < H; i++) { a += hbuf[i] * r.W2[i * NC + j]; }
+        out[j] = a;
+      }
+    }
+    var mx = -Infinity;
+    for (j = 0; j < NC; j++) { if (out[j] > mx) { mx = out[j]; } }
+    var sum = 0;
+    for (j = 0; j < NC; j++) { out[j] = Math.exp(out[j] - mx); sum += out[j]; }
+    for (j = 0; j < NC; j++) { out[j] /= sum; }
+    return out;
+  }
+
+  /* --------------------------------------------------------- sudoku state */
+
+  var grid = null, given = null, solution = null, mode = "mbon";
+  var filled = 0, wrong = 0, puzIdx = 0, stalled = false;
+
+  function bitsFor(g, r, c) {
+    var b = new Float32Array(27), i, j, v;
+    var br = 3 * ((r / 3) | 0), bc = 3 * ((c / 3) | 0);
+    for (i = 0; i < 9; i++) {
+      v = g[r * 9 + i]; if (v) { b[9 + v - 1] = 1; }
+      v = g[i * 9 + c]; if (v) { b[v - 1] = 1; }
+    }
+    for (i = 0; i < 3; i++) {
+      for (j = 0; j < 3; j++) {
+        v = g[(br + i) * 9 + bc + j]; if (v) { b[18 + v - 1] = 1; }
+      }
+    }
+    return b;
+  }
+
+  /* Evaluate every empty square, return the one the circuit is surest about. */
+  function bestMove() {
+    var best = null;
+    for (var idx = 0; idx < 81; idx++) {
+      if (grid[idx]) { continue; }
+      encodeCell(bitsFor(grid, (idx / 9) | 0, idx % 9));
+      kenyon();
+      var p = readout(mode), mx = -1, arg = 0;
+      for (var d = 0; d < NC; d++) { if (p[d] > mx) { mx = p[d]; arg = d; } }
+      if (arg === UNKNOWN) { continue; }
+      if (!best || mx > best.conf) {
+        best = { idx: idx, digit: arg + 1, conf: mx, p: p };
+      }
+    }
+    if (best && best.conf < RO[mode].tau) { return null; }
+    return best;
+  }
+
+  /* ------------------------------------------------------------ rendering */
+
+  var boardEl = document.getElementById("board"), cells = [];
+  for (var ci = 0; ci < 81; ci++) {
+    var d = document.createElement("div");
+    d.className = "cell" +
+      (((((ci / 9) | 0) / 3 | 0) + ((ci % 9) / 3 | 0)) % 2 ? " b" : "") +
+      ((((ci / 9) | 0) % 3 === 0 && ci > 8) ? " r3" : "") +
+      ((ci % 9) % 3 === 0 && ci % 9 !== 0 ? " c3" : "");
+    boardEl.appendChild(d);
+    cells.push(d);
+  }
+
+  function paint(freshIdx) {
+    for (var i = 0; i < 81; i++) {
+      var v = grid[i];
+      cells[i].textContent = v || "";
+      cells[i].classList.toggle("solved", !!v && !given[i]);
+      cells[i].classList.remove("target");
+      if (i === freshIdx && !REDUCED) {
+        cells[i].classList.remove("fresh");
+        void cells[i].offsetWidth;
+        cells[i].classList.add("fresh");
+      }
+    }
+    document.getElementById("tFilled").textContent = filled;
+    document.getElementById("tLeft").textContent = grid.filter(function (v) { return !v; }).length;
+    document.getElementById("tWrong").textContent = wrong;
+  }
+
+  /* projection neuron strip + Kenyon cell field */
+  var DPR = Math.min(2, window.devicePixelRatio || 1);
+  var pnCv = document.getElementById("pnStrip"), pnCtx = pnCv.getContext("2d");
+  var kcCv = document.getElementById("kcField"), kcCtx = kcCv.getContext("2d");
+  var kcBase = null, kcPx = null;
+
+  function sizeCanvas(cv, ctx, h) {
+    var w = cv.clientWidth || 260;
+    cv.width = Math.round(w * DPR); cv.height = Math.round(h * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    return w;
+  }
+
+  function layoutMB() {
+    sizeCanvas(pnCv, pnCtx, 34);
+    var w = sizeCanvas(kcCv, kcCtx, 150);
+    kcBase = document.createElement("canvas");
+    kcBase.width = kcCv.width; kcBase.height = kcCv.height;
+    var b = kcBase.getContext("2d");
+    b.setTransform(DPR, 0, 0, DPR, 0, 0);
+    b.fillStyle = "#080A0D"; b.fillRect(0, 0, w, 150);
+    b.fillStyle = "rgba(120,140,160,0.16)";
+    kcPx = new Float32Array(NKC * 2);
+    for (var i = 0; i < NKC; i++) {
+      var px = 8 + (XY[i * 2] * 0.5 + 0.5) * (w - 16);
+      var py = 8 + (XY[i * 2 + 1] * 0.5 + 0.5) * (150 - 16);
+      kcPx[i * 2] = px; kcPx[i * 2 + 1] = py;
+      b.fillRect(px - 0.6, py - 0.6, 1.2, 1.2);
+    }
+  }
+
+  function accent() { return mode === "plus" ? "255,180,84" : "61,232,160"; }
+
+  function drawMB() {
+    var w = pnCv.clientWidth || 260;
+    pnCtx.fillStyle = "#080A0D"; pnCtx.fillRect(0, 0, w, 34);
+    var bw = w / NPN;
+    for (var i = 0; i < NPN; i++) {
+      var v = Math.max(0, Math.min(1, xv[i] / 3 + 0.5));
+      var h = Math.max(1, v * 30);
+      pnCtx.fillStyle = "rgba(" + accent() + "," + (0.18 + v * 0.72) + ")";
+      pnCtx.fillRect(i * bw, 32 - h, Math.max(1, bw - 0.6), h);
+    }
+    kcCtx.setTransform(1, 0, 0, 1, 0, 0);
+    kcCtx.drawImage(kcBase, 0, 0);
+    kcCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    kcCtx.globalCompositeOperation = "lighter";
+    for (var j = 0; j < NKC; j++) {
+      var g = gv[j];
+      if (g > 0.04) {
+        kcCtx.fillStyle = "rgba(" + accent() + "," + Math.min(1, g * 0.9) + ")";
+        kcCtx.beginPath();
+        kcCtx.arc(kcPx[j * 2], kcPx[j * 2 + 1], 1.3 + g * 1.5, 0, 6.284);
+        kcCtx.fill();
+      }
+    }
+    kcCtx.globalCompositeOperation = "source-over";
+  }
+
+  var votesEl = document.getElementById("votes"), voteRows = [];
+  for (var vi = 0; vi < 10; vi++) {
+    var row = document.createElement("div");
+    row.className = "vote";
+    row.innerHTML = '<span class="d">' + (vi < 9 ? vi + 1 : "?") +
+      '</span><span class="vbar"><i></i></span><span class="v">0</span>';
+    votesEl.appendChild(row);
+    voteRows.push(row);
+  }
+  function drawVotes(p) {
+    var mx = 0, arg = 0;
+    for (var i = 0; i < 10; i++) { if (p[i] > mx) { mx = p[i]; arg = i; } }
+    for (i = 0; i < 10; i++) {
+      voteRows[i].querySelector("i").style.width = (p[i] * 100).toFixed(1) + "%";
+      voteRows[i].querySelector(".v").textContent = (p[i] * 100).toFixed(0);
+      voteRows[i].classList.toggle("win", i === arg);
+    }
+  }
+
+  /* ----------------------------------------------------------- the fly */
+
+  var flyCv = document.getElementById("flyLayer"), flyCtx = flyCv.getContext("2d");
+  var fly = { x: 0, y: 0, tx: 0, ty: 0, ang: 0, t: 0 };
+
+  function layoutFly() {
+    var r = boardEl.getBoundingClientRect();
+    var p = flyCv.parentNode.getBoundingClientRect();
+    flyCv.width = Math.round(p.width * DPR);
+    flyCv.height = Math.round(p.height * DPR);
+    flyCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    flyCv.bx = r.left - p.left; flyCv.by = r.top - p.top;
+    flyCv.bw = r.width; flyCv.bh = r.height;
+    flyCv.pw = p.width; flyCv.ph = p.height;
+  }
+
+  function cellCentre(idx) {
+    var r = (idx / 9) | 0, c = idx % 9;
+    return {
+      x: flyCv.bx + (c + 0.5) * flyCv.bw / 9,
+      y: flyCv.by + (r + 0.5) * flyCv.bh / 9
+    };
+  }
+
+  function drawFly(dt) {
+    flyCtx.clearRect(0, 0, flyCv.pw || 0, flyCv.ph || 0);
+    fly.t += dt;
+
+    var dx = fly.tx - fly.x, dy = fly.ty - fly.y;
+    var dist = Math.hypot(dx, dy);
+    var ease = REDUCED ? 0.28 : 0.14;
+    fly.x += dx * ease; fly.y += dy * ease;
+    if (dist > 1.5) { fly.ang = Math.atan2(dy, dx); }
+    // insect jitter, damped as it settles
+    var wob = Math.min(1, dist / 40);
+    var jx = Math.sin(fly.t * 19) * 1.5 * wob;
+    var jy = Math.cos(fly.t * 23) * 1.5 * wob;
+
+    var x = fly.x + jx, y = fly.y + jy;
+    flyCtx.save();
+    flyCtx.translate(x, y);
+    flyCtx.rotate(fly.ang + Math.PI / 2);
+
+    // wings, flapping
+    var flap = Math.abs(Math.sin(fly.t * (REDUCED ? 6 : 34)));
+    flyCtx.fillStyle = "rgba(205,225,240,0.34)";
+    [-1, 1].forEach(function (s) {
+      flyCtx.save();
+      flyCtx.rotate(s * (0.5 + flap * 0.7));
+      flyCtx.beginPath();
+      flyCtx.ellipse(s * 5.5, -1.5, 6.5, 2.6, 0, 0, 6.284);
+      flyCtx.fill();
+      flyCtx.restore();
+    });
+
+    // abdomen and thorax
+    flyCtx.fillStyle = "#1C2530";
+    flyCtx.beginPath(); flyCtx.ellipse(0, 3.2, 3.1, 5.2, 0, 0, 6.284); flyCtx.fill();
+    flyCtx.fillStyle = "#2A3644";
+    flyCtx.beginPath(); flyCtx.ellipse(0, -1.6, 3.0, 3.4, 0, 0, 6.284); flyCtx.fill();
+    // head with the mushroom body glowing inside it
+    flyCtx.fillStyle = "rgba(" + accent() + ",0.95)";
+    flyCtx.beginPath(); flyCtx.arc(0, -5.4, 2.5, 0, 6.284); flyCtx.fill();
+    flyCtx.fillStyle = "rgba(" + accent() + ",0.22)";
+    flyCtx.beginPath(); flyCtx.arc(0, -5.4, 5.6, 0, 6.284); flyCtx.fill();
+    flyCtx.restore();
+  }
+
+  /* ------------------------------------------------------------ the loop */
+
+  var playing = true, pending = null, lastStep = 0, lastFrame = performance.now();
+  var statusEl = document.getElementById("status");
+
+  function stepInterval() {
+    var s = +document.getElementById("speed").value;
+    return 1500 / s;
+  }
+
+  function doStep() {
+    if (grid.every(function (v) { return v; })) {
+      stalled = false;
+      document.body.classList.remove("is-stalled");
+      statusEl.innerHTML = '<span class="done">Solved.</span> ' + filled +
+        " squares deduced, none wrong.";
+      playing = false;
+      syncPlay();
+      return;
+    }
+    var mv = bestMove();
+    if (!mv) {
+      stalled = true;
+      document.body.classList.add("is-stalled");
+      var left = grid.filter(function (v) { return !v; }).length;
+      statusEl.innerHTML = '<span class="stall">Stalled.</span> No square clears the ' +
+        'confidence threshold. <b>' + left + '</b> left unsolved &mdash; the readout ' +
+        'cannot separate the answer from the Kenyon cell code.' +
+        (mode === "mbon" ? " Switch on the extra layer to see the difference." : "");
+      playing = false;
+      syncPlay();
+      return;
+    }
+    stalled = false;
+    document.body.classList.remove("is-stalled");
+
+    // fly there, then commit
+    var cc = cellCentre(mv.idx);
+    fly.tx = cc.x; fly.ty = cc.y;
+    cells[mv.idx].classList.add("target");
+    pending = mv;
+
+    encodeCell(bitsFor(grid, (mv.idx / 9) | 0, mv.idx % 9));
+    kenyon();
+    drawVotes(mv.p);
+    document.getElementById("tConf").textContent = (mv.conf * 100).toFixed(1) + "%";
+    statusEl.innerHTML = "Reading row " + (((mv.idx / 9) | 0) + 1) + ", column " +
+      ((mv.idx % 9) + 1) + " &mdash; <b>" + mv.digit + "</b> at " +
+      (mv.conf * 100).toFixed(1) + "% confidence." +
+      (mode === "plus"
+        ? " <span style='color:var(--plus)'>Running with the extra layer no fly has.</span>"
+        : "");
+  }
+
+  function commit() {
+    if (!pending) { return; }
+    var mv = pending; pending = null;
+    grid[mv.idx] = mv.digit;
+    filled++;
+    if (solution && mv.digit !== solution[mv.idx]) { wrong++; }
+    paint(mv.idx);
+  }
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+    var dt = Math.min(0.05, (now - lastFrame) / 1000);
+    lastFrame = now;
+    drawFly(dt);
+    drawMB();
+
+    if (!playing) { return; }
+    if (now - lastStep < stepInterval()) { return; }
+
+    if (pending) {
+      var cc = cellCentre(pending.idx);
+      if (Math.hypot(cc.x - fly.x, cc.y - fly.y) < 6) {
+        commit();
+        lastStep = now;
+      }
+      return;
+    }
+    doStep();
+    lastStep = now;
+  }
+
+  /* ------------------------------------------------------------ controls */
+
+  function syncPlay() {
+    var b = document.getElementById("playBtn");
+    b.setAttribute("aria-pressed", playing ? "true" : "false");
+    b.innerHTML = playing ? "&#10073;&#10073; Pause" : "&#9654; Play";
+  }
+
+  function loadPuzzle(k) {
+    var P = S.puzzles[k % S.puzzles.length];
+    grid = P.puzzle.slice();
+    given = P.puzzle.map(function (v) { return v !== 0; });
+    solution = P.solution.slice();
+    filled = 0; wrong = 0; pending = null; stalled = false;
+    document.body.classList.remove("is-stalled");
+    document.getElementById("tConf").textContent = "—";
+    paint(-1);
+    layoutFly();
+    var c0 = cellCentre(40);
+    fly.x = c0.x; fly.y = flyCv.by - 30; fly.tx = c0.x; fly.ty = c0.y;
+    statusEl.innerHTML = "New puzzle. <b>" +
+      grid.filter(function (v) { return !v; }).length +
+      "</b> squares empty, all reachable by single-square deduction.";
+  }
+
+  document.getElementById("playBtn").addEventListener("click", function () {
+    playing = !playing;
+    if (playing) { lastStep = 0; }
+    syncPlay();
+  });
+  document.getElementById("stepBtn").addEventListener("click", function () {
+    playing = false; syncPlay();
+    if (pending) { commit(); } else { doStep(); }
+  });
+  document.getElementById("newBtn").addEventListener("click", function () {
+    puzIdx++; loadPuzzle(puzIdx); playing = true; lastStep = 0; syncPlay();
+  });
+
+  function setMode(m) {
+    mode = m;
+    document.body.classList.toggle("mode-plus", m === "plus");
+    document.getElementById("mbonBtn").setAttribute("aria-pressed", m === "mbon" ? "true" : "false");
+    document.getElementById("plusBtn").setAttribute("aria-pressed", m === "plus" ? "true" : "false");
+    document.getElementById("modeTag").textContent =
+      "Readout: " + (m === "plus" ? "mushroom body + one layer" : "mushroom body");
+    loadPuzzle(puzIdx);
+    playing = true; lastStep = 0; syncPlay();
+  }
+  document.getElementById("mbonBtn").addEventListener("click", function () { setMode("mbon"); });
+  document.getElementById("plusBtn").addEventListener("click", function () { setMode("plus"); });
+
+  /* ------------------------------------------------------------- tables */
+
+  var R = S.results;
+  document.getElementById("diagTable").innerHTML =
+    document.getElementById("diagTable").querySelector("caption").outerHTML +
+    "<thead><tr><th>Readout</th><th>Accuracy</th></tr></thead><tbody>" +
+    "<tr><th scope='row'>Small network on the raw 27 facts</th><td>1.0000</td></tr>" +
+    "<tr class='hl'><th scope='row'>Kenyon cells &rarr; output neurons (the fly)</th><td>" +
+      R.mbon.accuracy.toFixed(4) + "</td></tr>" +
+    "<tr class='hl-plus'><th scope='row'>Kenyon cells &rarr; one extra layer &rarr; output</th><td>" +
+      R.plus.accuracy.toFixed(4) + "</td></tr></tbody>";
+
+  document.getElementById("puzTable").innerHTML =
+    document.getElementById("puzTable").querySelector("caption").outerHTML +
+    "<thead><tr><th>Readout</th><th>Solved</th><th>Squares filled</th>" +
+    "<th>Corrupted</th></tr></thead><tbody>" +
+    "<tr class='hl'><th scope='row'>The fly</th><td>" + R.mbon.solved + " / " + R.mbon.of +
+      "</td><td>" + (R.mbon.mean_filled * 100).toFixed(1) + "%</td><td>" +
+      R.mbon.corrupted + "</td></tr>" +
+    "<tr class='hl-plus'><th scope='row'>+ one extra layer</th><td>" + R.plus.solved + " / " +
+      R.plus.of + "</td><td>" + (R.plus.mean_filled * 100).toFixed(1) + "%</td><td>" +
+      R.plus.corrupted + "</td></tr></tbody>";
+
+  /* --------------------------------------------------------------- boot */
+
+  var rt;
+  window.addEventListener("resize", function () {
+    clearTimeout(rt);
+    rt = setTimeout(function () { layoutMB(); layoutFly(); }, 150);
+  });
+
+  layoutMB();
+  // Open on the readout that actually finishes, so the circuit is seen
+  // working before the missing layer is taken away. The label, the button
+  // and the running commentary all say which one is the fly.
+  setMode("plus");
+  requestAnimationFrame(frame);
+})();
+</script>
